@@ -8,14 +8,15 @@ mass = 50;
 krel = 22;
 l0   = 0.02;
 
-num=250; %number of trials to run
+num=10; %number of trials to run change back to 250
 fignum=1000;
 
 %% Flags
 IC_flag          = 1; %set to 1 to run an optimization for IC otherwise 0 reads in old IC
-pert_LU_flag     = 1; %flag for performing LU pertabation
-opt_flag         = 0; %flag for performing opt pertabation
+pert_LU_flag     = 0; %flag for performing LU pertabation
+opt_flag         = 1; %flag for performing opt pertabation
 baseline_flag    = 0; %flag for performing baseline pertabation
+opt_uncert_flag  = 0; %adding uncertainity to the optimal result
 save_flag        = 1; %flag to save data
 interp_data_flag = 1; %if zero uses exsiting data set or interpretes data set if set to 1
 
@@ -74,12 +75,48 @@ end
 
 error_vec=1./[0.2 0.18 .16 .14 .12 .1 .08 0.07 .06 0.055 0.05 0.045 .04 0.035 .03 0.025 .02];
 
+if opt_uncert_flag==1
+
+    noise=deg2rad(0.09)*[1 2 4 8 16 32 64];
+
+    L=length(error_vec);
+    step_suc    = zeros(L*length(noise),3);
+    av_step     = zeros(L*length(noise),2);
+    av_tim      = zeros(L*length(noise),1);
+    td_step_vec = zeros(L*length(noise),1);
+    b_step_vec  = zeros(L*length(noise),1);
+
+
+    % Perform Lookup
+    t_start=tic;
+    for k=1:length(noise)
+
+
+        [step_suc_opt, av_step_opt,av_time_opt]=td_pertabation_V2(robot, sim_param,IC,num,error_vec, 6, 4, beta_vec,td_vec,magsol,noise(k));
+
+        b_step_vec (L*(k-1)+1:k*L,:)  = beta_step;
+        td_step_vec(L*(k-1)+1:k*L,:)  = td_step;
+        step_suc   (L*(k-1)+1:k*L,:)  = step_t;
+        av_step    (L*(k-1)+1:k*L,:)  = av_step_t;
+        av_tim     (L*(k-1)+1:k*L,:)  = av_time_t;
+        fprintf('Done with %2.0f of %2.0f \n', [k,length(t_in)])
+
+    end
+    
+    toc(t_start)
+
+    if save_flag==1
+        pertabation_opt_filename = strcat('m_',num2str(mass),'g_krel_',num2str(krel),'_opt_noise.mat');
+        save(pertabation_opt_filename);
+    end
+
+end
+
 %this performs all of the optimization outputs
 if opt_flag == 1
     t_start=tic;
     [step_suc_opt, av_step_opt,av_time_opt]=td_pertabation_V2(robot, sim_param,IC,num,error_vec, 6, 1, beta_vec,td_vec,magsol);
     toc(t_start)
-    fprintf('M=%2d, Krel=%2d Opt done \n', [mass, krel])
 
     if save_flag==1
         pertabation_opt_filename = strcat('m_',num2str(mass),'g_krel_',num2str(krel),'_pert_opt.mat');
@@ -92,7 +129,6 @@ if baseline_flag == 1
     t_start=tic;
     [step_suc_base, av_step_base,av_time_base]=td_pertabation_V2(robot, sim_param,IC,num,error_vec, 6, 3, beta_vec,td_vec,magsol);
     toc(t_start)
-    fprintf('M=%2d, Krel=%2d Baseline done \n', [mass, krel])
 
     if save_flag==1
         pertabation_baseline = strcat('m_',num2str(mass),'g_krel_',num2str(krel),'_baseline.mat');

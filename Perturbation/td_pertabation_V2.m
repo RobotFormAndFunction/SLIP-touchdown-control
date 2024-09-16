@@ -1,4 +1,4 @@
-function [suc_total, av_step, av_time]=td_pertabation_V2(robot,sim_param,IC,iterations,rand_par,step_suc, type, beta_vec,td_vec,magsol)
+function [suc_total, av_step, av_time]=td_pertabation_V2(robot,sim_param,IC,iterations,rand_par,step_suc, type, beta_vec,td_vec,magsol,noise)
 % Startiing with and IC applies a perturbation to both velocity magnitude
 % and direction. System takes one step with perturbation then recalculates
 % the TD angle for step 2 that tries to give a stable gait.
@@ -14,6 +14,9 @@ function [suc_total, av_step, av_time]=td_pertabation_V2(robot,sim_param,IC,iter
 %      2) Assumes velocity magnitude is known at takeoff
 %
 %      3) BASELINE does not correct the TD angle and just holds constant
+%
+%      4) Opt with noise applies noise to the optimal result to understand
+%      robustness
 %
 %Inputs:
 %       - robot: Robot parameter class
@@ -31,6 +34,9 @@ function [suc_total, av_step, av_time]=td_pertabation_V2(robot,sim_param,IC,iter
 %       - beta_vec:   velocity beta angle vector
 %       - td_vec:     Td vector
 %       - magsol:     Velocity matrix
+%  
+%       - noise:      [optional] sigma value added to optimal touchdown
+%                     noise
 %
 % Outputs:
 %      - Suc_total: matrix where first column is 1/rand_par(i).  Columns
@@ -64,6 +70,8 @@ else
             fprintf('    Opt\n')
         elseif type==2
             fprintf('    Baseline\n')
+        elseif type==4
+            fprintf('    Opt with Noise \n')
         else
             fprintf('    Baseline\n')
         end
@@ -142,6 +150,12 @@ for j=1:length(rand_par)
                 mag_interp(k)=interp1(beta_vec,magsol(k,:),beta_desire(k));
             end
 
+            %Find velocity error and touchdown angle that corresponds to
+            %minumum energy
+            mag_err=(mag_interp-v_vec).^2./v_vec;
+            td_lookup=(td_vec(mag_err==min(mag_err)));
+            lk_t=toc;
+
 
             %Plot outputs for paper writing
 
@@ -160,6 +174,8 @@ for j=1:length(rand_par)
                 set(ax, 'FontSize', font_s); % Adjust 14 to your desired font size
                 hold off
 
+                index_v=mag_interp(mag_err==min(mag_err));
+
                 figure(87)
                 hold on
                 plot(td_vec,v_vec,"LineWidth",3.5)
@@ -171,23 +187,18 @@ for j=1:length(rand_par)
                 ax = gca; % Get the current axes handle
                 set(ax, 'FontSize', font_s); % Adjust 14 to your desired font size
                 plot(td_vec,mag_interp,'ro',"MarkerSize",3.5,'MarkerFaceColor','r')
+                plot(td_lookup,index_v,"Marker",'diamond',"MarkerSize",10,'MarkerFaceColor','#006400',"MarkerEdgeColor",'k')
                 lgd = legend('Theoretical','Data set');
+                lgd = legend('V_c','V_I','\theta_{TD}');
                 legend('boxoff')
                 fontsize(lgd,14,'points')
                 hold off
             end
-
-
-            %Find velocity error and touchdown angle that corresponds to
-            %minumum energy
-            mag_err=(mag_interp-v_vec).^2./v_vec;
-            td_lookup=(td_vec(mag_err==min(mag_err)));
-
-            lk_t=toc;
+            
         end
 
         %% Run Optimization
-        if (type==0 || type==1) && recoverable == 1
+        if (type==0 || type==1 || type==4) && recoverable == 1
             %Finish setting up some flight conditions
             robot.bl=0;
             sim_param.terrainvar=0;
@@ -233,9 +244,11 @@ for j=1:length(rand_par)
 
         % Run_simulation
 
-        if (type==0 || type==1 || type==3) && recoverable==1
+        if (type==0 || type==1 || type==3 || type==4) && recoverable==1
             if type==3
                 td=IC(3);
+            elseif type==4
+                td=td+normrnd(0,noise);
             end
             func_param.td=td;
             data= Stance_sim_Ode(robot,ICnew,sim_param,30,0,@con_td_write,func_param);
@@ -261,7 +274,7 @@ for j=1:length(rand_par)
             t_vec(i,:)=[opt_t,lk_t];
 
         else
-            if type==1 || type==3
+            if type==1 || type==3 || type==4
                 p=[td sum(data.switch)/2];
 
                 if type==3
